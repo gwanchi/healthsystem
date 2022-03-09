@@ -1,6 +1,7 @@
 package com.navierre.healthsystem;
 
 import java.util.List;
+import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -17,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -68,9 +70,9 @@ public class AppointmentController {
 	 * @throws ParseException
 	 */
 	@GetMapping("/slots")
-	List<SlotOutput> all(HttpServletRequest request) throws ParseException {
-		String serviceType = request.getParameter("serviceType");
-		String date = request.getParameter("date");
+	List<SlotOutput> all(@RequestBody Map<String, String> payload) throws ParseException {
+		String serviceType = payload.get("serviceType");
+		String date = payload.get("date");
 		Integer duration = serviceTypes.get(serviceType);
 		Date cdate = new SimpleDateFormat("yyyy-MM-dd").parse(date);
 		//Find eligible doctors based on minimum booking time
@@ -104,10 +106,10 @@ public class AppointmentController {
 	}
 	
 	@PostMapping("/slot")
-	Booking newBooking(HttpServletRequest request) throws ParseException {
-		String slotId = request.getParameter("slotId");
-		String serviceType = request.getParameter("serviceType");
-		String date = request.getParameter("date");
+	Booking newBooking(@RequestBody Map<String, String> payload) throws ParseException {
+		String slotId = payload.get("slotId");
+		String serviceType = payload.get("serviceType");
+		String date = payload.get("date");
 		Integer duration = serviceTypes.get(serviceType);
 		Date cdate = new SimpleDateFormat("yyyy-MM-dd").parse(date);
 		
