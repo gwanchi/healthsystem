@@ -3,12 +3,11 @@ package com.navierre.healthsystem;
 import java.util.List;
 import java.util.Map;
 
-import javax.servlet.http.HttpServletRequest;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -27,19 +26,29 @@ import org.springframework.web.bind.annotation.RestController;
  *
  */
 class SlotOutput {
-	Long slotId;
-	Integer duration;
+	String slotId;
+	String name;
+	LocalDateTime startTime;
+	LocalDateTime endTime;
 	SlotOutput() {}
-	public SlotOutput(Long slotId, Integer duration) {
+	public SlotOutput(String slotId, String name, LocalDateTime startTime, LocalDateTime endTime) {
 		this.slotId = slotId;
-		this.duration = duration;
+		this.name = name;
+		this.startTime = startTime;
+		this.endTime = endTime;
     }
-	public Long getSlotId() {
+	public String getSlotId() {
         return this.slotId;
     }
-	public Integer getDuration() {
-        return this.duration;
+	public String getName() {
+		return this.name;
+	}
+	public LocalDateTime getStartTime() {
+        return this.startTime;
     }
+	public LocalDateTime getEndTime() {
+		return this.endTime;
+	}
 }
 
 /**
@@ -52,6 +61,7 @@ public class AppointmentController {
 	
 	private final DoctorRepository doctorRepo;
 	private final BookingRepository bookingRepo;
+	private DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
 	HashMap<String, Integer> serviceTypes = new HashMap<String, Integer>();
 	private static final Logger logger = LoggerFactory.getLogger(AppointmentController.class);
 	
@@ -75,31 +85,28 @@ public class AppointmentController {
 		String date = payload.get("date");
 		Integer duration = serviceTypes.get(serviceType);
 		Date cdate = new SimpleDateFormat("yyyy-MM-dd").parse(date);
+		Calendar calendar = Calendar.getInstance();
+		calendar.setTime(cdate);
+		LocalDateTime dayStartTime = LocalDateTime.of(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH)+1, calendar.get(Calendar.DAY_OF_MONTH), 9, 00);
+		LocalDateTime dayEndTime = LocalDateTime.of(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH)+1, calendar.get(Calendar.DAY_OF_MONTH), 17, 00);
 		//Find eligible doctors based on minimum booking time
 		List<Doctor> doctors = doctorRepo.findByDurationLessThanEqual(duration);
 		//Check if for each doctor has left available time on given date (between 9AM & 5PM)
 		List<SlotOutput> slotList = new ArrayList<SlotOutput>();
 		doctors.forEach((doctor) -> {
 			//get maximum available start time on given date
-			List<Booking> bookings = bookingRepo.findMaximumStartDateTime(cdate, doctor.getId());
-			Integer numberOfSlots = 0;
-			if (bookings.size() > 0) {
-				Booking booking = bookings.get(0);
-				Calendar calendar = Calendar.getInstance();
-				calendar.setTime(cdate);
-				LocalDateTime endTime = LocalDateTime.of(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH)+1, calendar.get(Calendar.DAY_OF_MONTH), 17, 00);
-				//get the time difference before end of the day (5PM) for this doctor
-				Integer diff = (int) ChronoUnit.MINUTES.between(booking.getAppointmentToDate(), endTime);
-				if (diff > duration) {
-					numberOfSlots = (int) Math.floor(diff/duration);
+			List<Booking> bookings = new ArrayList<Booking>();
+			LocalDateTime ldate = dayStartTime;
+			while (ldate.isBefore(dayEndTime)) {
+				bookings = bookingRepo.findMaximumStartDateTime(ldate.plusMinutes(1), doctor.getId());
+				if (bookings.size() > 0) {
+					// Booking booking = bookings.get(0);
+					ldate = ldate.plusMinutes(doctor.getDuration());
+					continue;
 				}
-			} else {
-				numberOfSlots = (int) Math.floor(duration/doctor.getDuration());
+				slotList.add(new SlotOutput(ldate.format(formatter)+doctor.getId(), doctor.getName(), ldate, ldate.plusMinutes(duration)));
+				ldate = ldate.plusMinutes(duration);
 			}
-			//logger.info("{} {} {}", duration, doctor.getDuration(), duration%doctor.getDuration());
-			for (int i = 0; i < numberOfSlots; i++) {
-				slotList.add(new SlotOutput(doctor.getId(), doctor.getDuration()));
-		    }
 		});
 		
 		return slotList;
@@ -109,28 +116,20 @@ public class AppointmentController {
 	Booking newBooking(@RequestBody Map<String, String> payload) throws ParseException {
 		String slotId = payload.get("slotId");
 		String serviceType = payload.get("serviceType");
-		String date = payload.get("date");
 		Integer duration = serviceTypes.get(serviceType);
-		Date cdate = new SimpleDateFormat("yyyy-MM-dd").parse(date);
 		
-		List<Booking> bookings = bookingRepo.findMaximumStartDateTime(cdate, Long.valueOf(slotId));
-		LocalDateTime startTime;
-		if (bookings.size() > 0) {
-			Booking booking = bookings.get(0);
-			startTime = booking.getAppointmentToDate();
-		} else {
-			Calendar calendar = Calendar.getInstance();
-			calendar.setTime(cdate);
-			startTime = LocalDateTime.of(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH)+1, calendar.get(Calendar.DAY_OF_MONTH), 9, 00);
-		}
+		String date = slotId.substring(0, 12);
 		
+		LocalDateTime startTime = LocalDateTime.parse(date, formatter);		
 		
 		Booking booking = new Booking();
-		booking.setDoctorId(Long.valueOf(slotId));
+		booking.setDoctorId(Long.valueOf(slotId.substring(12)));
 		booking.setAppointmentFromDate(startTime);
 		booking.setAppointmentToDate(startTime.plusMinutes(duration));
 		
 		return bookingRepo.save(booking);
+		
+
 	}
 	
 	
